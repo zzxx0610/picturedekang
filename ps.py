@@ -271,87 +271,64 @@ if base_file:
                     base_size=(base_w, base_h)
                 )
 
-                # OCR 两个矩形
-                num1, cand1 = ocr_digits_from_patch(patch1)
+                # 只对 R2（蓝色矩形）做 OCR
                 num2, cand2 = ocr_digits_from_patch(patch2)
 
-                # 确定最终运单号：优先 R2；若 R1 包含 R2 子串则以 R2 为准
-                status = "OK"
+                status = ""
                 warn = ""
-                picked = ""
 
-                cand_set1 = set(cand1 or [])
-                cand_set2 = set(cand2 or [])
-                if num1:
-                    cand_set1.add(num1)
-                if num2:
-                    cand_set2.add(num2)
+                def pick_11_digits(primary, candidates):
+                    """优先返回 primary 的 11 位数字，否则在候选里找"""
+                    if primary and len(primary) == 11 and primary.isdigit():
+                        return primary
+                    for c in candidates:
+                        if len(c) == 11 and c.isdigit():
+                            return c
+                    return ""
+                cand_set2 = list(set(cand2 or []))  # 不要把 num2 混进去
+                r2_pick = pick_11_digits(num2, cand_set2)
 
-                def any_contains(setA, setB):
-                    return any(b in a for a in setA for b in setB)
 
-                if num1 and num2:
-                    if num1 == num2:
-                        picked = num2  # 任取，其实一致
-                        status = "OK"
-                    else:
-                        if any_contains(cand_set1, cand_set2):
-                            picked = num2
-                            status = "CONTAINS_OK"
-                            warn = f"R1含有R2子串：R1={num1}，R2={num2}，采用R2"
-                        elif any_contains(cand_set2, cand_set1):
-                            picked = num1
-                            status = "CONTAINS_OK"
-                            warn = f"R2含有R1子串：R1={num1}，R2={num2}，采用R1"
-                        else:
-                            picked = num2  # 按你的经验优先 R2
-                            status = "MISMATCH_PREFER_R2"
-                            warn = f"两区域不一致：R1={num1}，R2={num2}，优先采用R2"
-                elif num2:
-                    picked = num2
-                    status = "PARTIAL_R2"
-                    warn = "仅R2识别成功，采用R2"
-                elif num1:
-                    picked = num1
-                    status = "PARTIAL_R1"
-                    warn = "仅R1识别成功，采用R1"
+                # 原始运单号（不受文件名冲突影响）
+                if r2_pick:
+                    final_number = r2_pick
+                    status = "OK_R2"
                 else:
                     original_filename, _ = os.path.splitext(source_file_uploaded.name)
-                    picked = original_filename
+                    final_number = original_filename
                     status = "FAIL"
-                    warn = "两个区域均未识别到数字，已回退为原文件名"
+                    warn = "R2未识别到有效运单号，回退为源图文件名"
 
-                # 清理与去重
-                picked_safe = sanitize_filename(picked)
+                # 用原始运单号生成安全文件名
+                picked_safe = sanitize_filename(final_number)
 
-                # 输出两张同内容图片：运单号.png 与 运单号-装1.png
+                # 文件保存时检查冲突，但不影响 final_number
                 img_buffer = io.BytesIO()
                 final_image.save(img_buffer, format="PNG")
                 img_bytes = img_buffer.getvalue()
 
-                name1_base = picked_safe
-                name2_base = f"{picked_safe}-装1"
-
-                out1 = unique_name(name1_base, ".png", used_names)
-                out2 = unique_name(name2_base, ".png", used_names)
+                out1 = unique_name(picked_safe, ".png", used_names)
+                out2 = unique_name(f"{picked_safe}-装1", ".png", used_names)
 
                 zip_file.writestr(out1, img_bytes)
                 zip_file.writestr(out2, img_bytes)
 
                 last_processed_image = final_image
 
-                # 记录日志
+                # 记录日志（使用原始运单号 final_number）
                 ocr_logs.append({
                     "序号": i + 1,
                     "源图文件": source_file_uploaded.name,
-                    "R1识别": num1,
                     "R2识别": num2,
-                    "最终运单号": picked_safe,
+                    "最终运单号": final_number,
                     "输出文件1": out1,
                     "输出文件2": out2,
                     "状态": status,
                     "备注": warn
                 })
+
+
+
 
         progress_bar.empty()
         st.success("🎉 批量处理完成！已根据 OCR 运单号完成命名并打包。")
