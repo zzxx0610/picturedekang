@@ -145,7 +145,7 @@ if base_file:
         return x0, y0, w0, h0
 
     def_r1x, def_r1y, def_r1w, def_r1h = clamp_default_xywhr(360, 210, 2150, 350)
-    def_r2x, def_r2y, def_r2w, def_r2h = clamp_default_xywhr(2280, 870, 165, 180)
+    def_r2x, def_r2y, def_r2w, def_r2h = clamp_default_xywhr(2280, 870, 150, 180)
 
     with st.sidebar:
         if source_files:
