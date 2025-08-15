@@ -1,3 +1,4 @@
+
 # st_app.py
 import streamlit as st
 from PIL import Image, ImageDraw, ImageOps
@@ -224,13 +225,12 @@ if base_file:
         st.error("以下源图尺寸与底图不一致，请更换或重新导出后再上传：")
         for name, sz in bad_sources:
             st.write(f"- {name}：{sz}")
-        process_button = False
-    else:
-        process_button = st.button(
-            f"🚀 开始批量处理并OCR命名 ({len(source_files) if source_files else 0} 张)",
-            use_container_width=True,
-            disabled=not source_files
-        )
+
+    process_button = st.button(
+        f"🚀 开始批量处理并OCR命名 ({len(source_files) if source_files else 0} 张)",
+        use_container_width=True,
+        disabled=not source_files or bool(bad_sources)
+    )
 
     if source_files and process_button:
         # OCR 可用性检查
@@ -242,15 +242,22 @@ if base_file:
                      "然后 pip install pytesseract，再重新运行本应用。")
             st.stop()
 
-        zip_buffer = io.BytesIO()
+        # [修改] 创建两个ZIP文件的内存缓冲区
+        zip_buffer_main = io.BytesIO()
+        zip_buffer_zhuang1 = io.BytesIO()
+
         progress_bar = st.progress(0, text="开始处理...")
         last_processed_image = None
-
-        # OCR 日志与命名冲突处理
         ocr_logs = []
-        used_names = set()
 
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # [修改] 为两个ZIP包分别设置命名冲突检查
+        used_names_main = set()
+        used_names_zhuang1 = set()
+# 修改后的代码
+# [修改] 使用 with 同时管理两个ZIP文件
+
+        with zipfile.ZipFile(zip_buffer_main, 'w', zipfile.ZIP_DEFLATED) as zip_main,\
+            zipfile.ZipFile(zip_buffer_zhuang1, 'w', zipfile.ZIP_DEFLATED) as zip_zhuang1:
             for i, source_file_uploaded in enumerate(source_files):
                 progress_text = f"处理中: {source_file_uploaded.name} ({i+1}/{len(source_files)})"
                 progress_bar.progress((i + 1) / len(source_files), text=progress_text)
@@ -307,11 +314,15 @@ if base_file:
                 final_image.save(img_buffer, format="PNG")
                 img_bytes = img_buffer.getvalue()
 
-                out1 = unique_name(picked_safe, ".png", used_names)
-                out2 = unique_name(f"{picked_safe}-装1", ".png", used_names)
+                # 修改后的代码
+                # [修改] 分别处理和写入两个ZIP包
+                name1_base = picked_safe # <--- 在这里定义了 name1_base
+                name2_base = f"{picked_safe}-装1"
+                out1 = unique_name(name1_base, ".png", used_names_main)
+                out2 = unique_name(name2_base, ".png", used_names_zhuang1)
 
-                zip_file.writestr(out1, img_bytes)
-                zip_file.writestr(out2, img_bytes)
+                zip_main.writestr(out1, img_bytes)
+                zip_zhuang1.writestr(out2, img_bytes)
 
                 last_processed_image = final_image
 
@@ -327,38 +338,59 @@ if base_file:
                     "备注": warn
                 })
 
-
-
+        # 保存到 session_state
+        st.session_state.zip_main = zip_buffer_main.getvalue()
+        st.session_state.zip_zhuang1 = zip_buffer_zhuang1.getvalue()
+        st.session_state.ocr_logs = ocr_logs
+        st.session_state.last_processed_image = last_processed_image
+        st.session_state.processing_complete = True
 
         progress_bar.empty()
         st.success("🎉 批量处理完成！已根据 OCR 运单号完成命名并打包。")
 
+    # 始终显示结果部分，如果已处理
+    if 'processing_complete' in st.session_state and st.session_state.processing_complete:
         # 结果预览 + OCR 报告
-        if last_processed_image:
+        if 'last_processed_image' in st.session_state:
             st.subheader("最后处理结果预览")
-            st.image(last_processed_image, caption="这是批量处理中最后一张图像的结果", use_container_width=True)
+            st.image(st.session_state.last_processed_image, caption="这是批量处理中最后一张图像的结果", use_container_width=True)
 
         st.subheader("OCR 识别报告")
         try:
             import pandas as pd
-            st.dataframe(pd.DataFrame(ocr_logs), use_container_width=True)
+            st.dataframe(pd.DataFrame(st.session_state.ocr_logs), use_container_width=True)
         except Exception:
-            for row in ocr_logs:
+            for row in st.session_state.ocr_logs:
                 st.write(row)
 
         # 汇总提醒（仅提示需要关注的情况）
-        issues = [r for r in ocr_logs if r["状态"] in ("MISMATCH_PREFER_R2", "PARTIAL_R1", "FAIL")]
+        issues = [r for r in st.session_state.ocr_logs if r["状态"] == "FAIL"]
         if issues:
             st.warning("以下源图 OCR 识别存在需要关注的情况：")
             for r in issues:
                 st.write(f"- 第{r['序号']}张（{r['源图文件']}）：{r['备注']}")
 
-        st.download_button(
-            label="📥 下载所有结果 (.zip)",
-            data=zip_buffer.getvalue(),
-            file_name="批量合成结果_按运单号命名.zip",
-            mime="application/zip",
-            use_container_width=True
-        )
+        # 修改后的代码
+        # [修改] 提供两个独立的下载按钮
+        st.subheader("下载处理结果")
+        dl_col1, dl_col2 = st.columns(2)
+
+        with dl_col1:
+            st.download_button(
+                label="📥 下载主文件 (.zip)",
+                data=st.session_state.zip_main,
+                file_name="批量合成_主文件.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
+
+        with dl_col2:
+            st.download_button(
+                label="📥 下载'-装1'文件 (.zip)",
+                data=st.session_state.zip_zhuang1,
+                file_name="批量合成_装1.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
 else:
     st.warning("请先在侧边栏上传基础图像（底图）。再上传源图时，请确保尺寸与底图完全一致。")
