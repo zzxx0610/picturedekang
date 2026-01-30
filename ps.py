@@ -148,6 +148,28 @@ if base_file:
     def_r1x, def_r1y, def_r1w, def_r1h = clamp_default_xywhr(360, 210, 2150, 350)
     def_r2x, def_r2y, def_r2w, def_r2h = clamp_default_xywhr(2280, 870, 150, 180)
 
+    # 初始化 session_state 保持参数值（仅在首次时使用默认值）
+    if 'rect_params_initialized' not in st.session_state:
+        st.session_state.r1x_val = int(def_r1x)
+        st.session_state.r1y_val = int(def_r1y)
+        st.session_state.r1w_val = int(def_r1w)
+        st.session_state.r1h_val = int(def_r1h)
+        st.session_state.r2x_val = int(def_r2x)
+        st.session_state.r2y_val = int(def_r2y)
+        st.session_state.r2w_val = int(def_r2w)
+        st.session_state.r2h_val = int(def_r2h)
+        st.session_state.rect_params_initialized = True
+
+    # 确保当前值不超出底图范围
+    st.session_state.r1x_val = min(st.session_state.r1x_val, base_w - 1)
+    st.session_state.r1y_val = min(st.session_state.r1y_val, base_h - 1)
+    st.session_state.r1w_val = min(st.session_state.r1w_val, base_w - st.session_state.r1x_val)
+    st.session_state.r1h_val = min(st.session_state.r1h_val, base_h - st.session_state.r1y_val)
+    st.session_state.r2x_val = min(st.session_state.r2x_val, base_w - 1)
+    st.session_state.r2y_val = min(st.session_state.r2y_val, base_h - 1)
+    st.session_state.r2w_val = min(st.session_state.r2w_val, base_w - st.session_state.r2x_val)
+    st.session_state.r2h_val = min(st.session_state.r2h_val, base_h - st.session_state.r2y_val)
+
     with st.sidebar:
         if source_files:
             st.header("2. 定义裁剪区域（应用于所有源图）")
@@ -155,17 +177,31 @@ if base_file:
             st.header("2. 定义裁剪区域")
 
         with st.expander("红色区域 (补丁1)", expanded=True):
-            r1_x = st.number_input("X坐标", min_value=0, max_value=base_w, value=int(def_r1x), key='r1x')
-            r1_y = st.number_input("Y坐标", min_value=0, max_value=base_h, value=int(def_r1y), key='r1y')
-            r1_w = st.number_input("宽度", min_value=1, max_value=max(1, base_w - int(r1_x)), value=int(min(def_r1w, max(1, base_w - int(r1_x)))), key='r1w')
-            r1_h = st.number_input("高度", min_value=1, max_value=max(1, base_h - int(r1_y)), value=int(min(def_r1h, max(1, base_h - int(r1_y)))), key='r1h')
+            r1_x = st.number_input("X坐标", min_value=0, max_value=base_w, value=st.session_state.r1x_val, key='r1x')
+            r1_y = st.number_input("Y坐标", min_value=0, max_value=base_h, value=st.session_state.r1y_val, key='r1y')
+            r1_w = st.number_input("宽度", min_value=1, max_value=max(1, base_w - int(r1_x)), value=int(min(st.session_state.r1w_val, max(1, base_w - int(r1_x)))), key='r1w')
+            r1_h = st.number_input("高度", min_value=1, max_value=max(1, base_h - int(r1_y)), value=int(min(st.session_state.r1h_val, max(1, base_h - int(r1_y)))), key='r1h')
+
+            # 更新 session_state 保存当前值
+            st.session_state.r1x_val = int(r1_x)
+            st.session_state.r1y_val = int(r1_y)
+            st.session_state.r1w_val = int(r1_w)
+            st.session_state.r1h_val = int(r1_h)
+
             rect1_definition = {"x": int(r1_x), "y": int(r1_y), "width": int(r1_w), "height": int(r1_h)}
 
         with st.expander("蓝色区域 (补丁2)", expanded=True):
-            r2_x = st.number_input("X坐标 ", min_value=0, max_value=base_w, value=int(def_r2x), key='r2x')
-            r2_y = st.number_input("Y坐标 ", min_value=0, max_value=base_h, value=int(def_r2y), key='r2y')
-            r2_w = st.number_input("宽度 ", min_value=1, max_value=max(1, base_w - int(r2_x)), value=int(min(def_r2w, max(1, base_w - int(r2_x)))), key='r2w')
-            r2_h = st.number_input("高度 ", min_value=1, max_value=max(1, base_h - int(r2_y)), value=int(min(def_r2h, max(1, base_h - int(r2_y)))), key='r2h')
+            r2_x = st.number_input("X坐标 ", min_value=0, max_value=base_w, value=st.session_state.r2x_val, key='r2x')
+            r2_y = st.number_input("Y坐标 ", min_value=0, max_value=base_h, value=st.session_state.r2y_val, key='r2y')
+            r2_w = st.number_input("宽度 ", min_value=1, max_value=max(1, base_w - int(r2_x)), value=int(min(st.session_state.r2w_val, max(1, base_w - int(r2_x)))), key='r2w')
+            r2_h = st.number_input("高度 ", min_value=1, max_value=max(1, base_h - int(r2_y)), value=int(min(st.session_state.r2h_val, max(1, base_h - int(r2_y)))), key='r2h')
+
+            # 更新 session_state 保存当前值
+            st.session_state.r2x_val = int(r2_x)
+            st.session_state.r2y_val = int(r2_y)
+            st.session_state.r2w_val = int(r2_w)
+            st.session_state.r2h_val = int(r2_h)
+
             rect2_definition = {"x": int(r2_x), "y": int(r2_y), "width": int(r2_w), "height": int(r2_h)}
 
     # 源图尺寸校验（若已上传）
